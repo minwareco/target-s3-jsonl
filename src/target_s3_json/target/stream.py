@@ -262,6 +262,10 @@ class Loader():
 
         for stream in self.stream_data:
             await self.writeline(stream, self.stream_data, self.config)
+            # CHANGED FROM FORK
+            # Since it's all in one file, only post-process once so we don't upload the same file
+            # once for each stream
+            break
 
         return self.state, self.stream_data
 
