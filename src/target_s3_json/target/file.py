@@ -100,7 +100,9 @@ def set_schema(stream: str, config: Dict, stream_data: Dict, schema: Dict = {}) 
             'file_data': []}
 
         for path in stream_data[stream]['path'].values():
-            path['absolute_path'].unlink(missing_ok=True)
+            # Don't do this since we're putting multiple streamsin the same file
+            pass
+            #path['absolute_path'].unlink(missing_ok=True)
             # path['absolute_path'].parent.mkdir(parents=True, exist_ok=True)
 
 
