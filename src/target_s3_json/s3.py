@@ -1,3 +1,4 @@
+from io import BufferedIOBase
 import sys
 from os import environ
 from functools import partial
@@ -6,8 +7,9 @@ import argparse
 import json
 import gzip
 import lzma
+import time
 from typing import Callable, Dict, Any, List, TextIO
-from asyncio import to_thread
+from asyncio import sleep, to_thread
 from concurrent.futures import ThreadPoolExecutor, Future
 
 import backoff
@@ -189,22 +191,109 @@ def config_s3(config_default: Dict[str, Any], datetime_format: Dict[str, str] = 
 
     return config_default
 
+curSchemaBuffer = b''
+lastFlushTime = time.time()
+FLUSH_STATE_AFTER_SECONDS = 60 * 10
+
+class WrappedIoBuffer():
+    def __init__(self, input: BufferedIOBase) -> None:
+        self.input = input
+        self.closed = False
+        self.empty = False
+        self.buffer = curSchemaBuffer
+        self.storedLine = False
+        self.stoppedState = False
+
+    def readable(self):
+        return not self.closed
+
+    def writable(self):
+        return False
+
+    def seekable(self):
+        return False
+
+    def readMore(self):
+        global lastFlushTime
+
+        if self.empty or self.closed:
+            return
+        readData = self.input.readline()
+        if not readData:
+            self.empty = True
+            return
+
+        try:
+            line = json.loads(readData)
+        except json.decoder.JSONDecodeError:
+            LOGGER.error(f'Unable to parse:\n{readData}')
+            raise
+
+        # Don't read any more after the state if we want to let it flush
+        if line['type'] == 'STATE':
+            curTime = time.time()
+            if curTime - lastFlushTime > FLUSH_STATE_AFTER_SECONDS:
+                self.empty = True
+                self.stoppedState = True
+                lastFlushTime = curTime
+        # Save schemas becuase they have to be output after each state
+        if line['type'] == 'SCHEMA':
+            global curSchemaBuffer
+            curSchemaBuffer += readData
+
+        self.buffer += readData
+
+    def read(self, size):
+        if self.empty:
+            self.closed = True
+            return b''
+        readSize = 8192 if size == -1 else size
+        if len(self.buffer) < readSize:
+            self.readMore()
+        if len(self.buffer) == 0:
+            self.closed = True
+            return b''
+        readData = self.buffer[:readSize]
+        self.buffer = self.buffer[readSize:]
+        return readData
+
+class WrappedTextIO():
+    def __init__(self, input: TextIO) -> None:
+        self.input = input
+        self.hasMore = True
+        self.buffer = WrappedIoBuffer(input.buffer)
+
+    def stoppedState(self):
+        return self.buffer.stoppedState
+
 
 def main(lines: TextIO = sys.stdin) -> None:
     '''Main'''
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', help='Config file', required=True)
     args = parser.parse_args()
-    config = file.config_compression(config_file(config_s3(json.loads(Path(args.config).read_text(encoding='utf-8')))))
+    lastTime = 0
     save_s3: Callable = partial(save_json, post_processing=upload_thread)
-    client: BaseClient = create_session(config).client('s3', **({'endpoint_url': config.get('aws_endpoint_url')}
-                                                       if config.get('aws_endpoint_url') else {}))
+    curConfig = config_s3(json.loads(Path(args.config).read_text(encoding='utf-8')))
+    client: BaseClient = None
+    while True:
+        curLines = WrappedTextIO(lines)
+        # Make sure file names don't collide
+        curTime = round(time.time())
+        if curTime == lastTime:
+            sleep(1)
+        lastTime = curTime
+        config = file.config_compression(config_file(curConfig))
+        if not client:
+            client = create_session(config).client('s3', **({'endpoint_url': config.get('aws_endpoint_url')}
+                                                        if config.get('aws_endpoint_url') else {}))
+        with ThreadPoolExecutor() as executor:
+            Loader(config | {'client': client, 'executor': executor, 'add_metadata_columns': True }, writeline=save_s3).run(curLines)
+        if not curLines.stoppedState():
+            break
 
-    with ThreadPoolExecutor() as executor:
-        Loader(config | {'client': client, 'executor': executor}, writeline=save_s3).run(lines)
 
 
-# from io import BytesIO
 # from pyarrow import parquet
 # from pyarrow.json import read_json
 # import pandas
