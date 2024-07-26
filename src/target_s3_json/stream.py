@@ -175,6 +175,8 @@ class Loader():
         validators: Dict = {}
         self.stream_data: Dict = {}
 
+        lastStateLine = ''
+
         for raw_line in lines:
             try:
                 line = json.loads(raw_line)  # NOTE: optional argument parse_float=Decimal)
@@ -256,18 +258,19 @@ class Loader():
                 self.state = None
 
             elif message_type == 'STATE':
-                LOGGER.debug('Setting state to %s', line['value'])
+                lastStateLine = line
                 self.state = line['value']
+                # Need to write these so we can tell if we got an incomplete stream
+                #await self.writeline(stream, self.stream_data, self.config, line)
 
             else:
                 LOGGER.warning('Unknown line type "{}" in line "{}"'.format(line['type'], line))
 
         for stream in self.stream_data:
+            # Write last state line at the end of every file so that we know it is complete
+            if lastStateLine:
+                await self.writeline(stream, self.stream_data, self.config, lastStateLine)
             await self.writeline(stream, self.stream_data, self.config)
-            # CHANGED FROM FORK
-            # Since it's all in one file, only post-process once so we don't upload the same file
-            # once for each stream
-            break
 
         return self.state, self.stream_data
 
