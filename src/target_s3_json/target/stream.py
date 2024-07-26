@@ -8,6 +8,7 @@ import json
 import datetime
 from asyncio import run
 from io import TextIOWrapper
+from copy import deepcopy
 
 from jsonschema import Draft4Validator, FormatChecker
 
@@ -183,6 +184,10 @@ class Loader():
 
             message_type = line['type']
             if message_type == 'SCHEMA':
+                # CHANGED FROM FORK
+                # copy before changes
+                origline = deepcopy(line)
+
                 if 'stream' not in line:
                     raise Exception(f"Line is missing required key 'stream': {raw_line}")
 
@@ -197,9 +202,6 @@ class Loader():
                 getcontext().prec = max(_all_precisions(line['schema']), default=max(1, getcontext().prec))
                 LOGGER.debug('Setting decimal precision to {}'.format(getcontext().prec))
 
-                # CHANGED FROM FORK
-                # copy before pop
-                origline = line.copy()
 
                 # NOTE: prevent exception *** jsonschema.exceptions.UnknownType: Unknown type 'SCHEMA' for validator.
                 #       'type' is a key word for jsonschema validator which is different from `{'type': 'SCHEMA'}` as the message type.
