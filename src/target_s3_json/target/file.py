@@ -148,7 +148,9 @@ async def save_json(
 
     # NOTE: Closure: no more records
     else:
-        for file_info in stream_data.values():
+        # CHANGED FROM FORK
+        # Only post-process the current stream, not all of them
+        for file_info in [stream_data[stream]]:
             if config.get('memory_buffer') is not None:
                 await save(config, file_info['path'][file_info['part']], file_info['file_data'])
             # TODO: post processing
@@ -156,6 +158,7 @@ async def save_json(
                 await post_processing(config, file_info['path'][file_info['part']])
             LOGGER.debug("File '%s' saved using open_func '%s'",
                          stream_data[stream]['path'][stream_data[stream]['part']]['absolute_path'], config['open_func'].__name__)
+
 
 
 # from io import BytesIO
