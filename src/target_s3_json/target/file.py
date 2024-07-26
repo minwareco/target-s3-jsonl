@@ -126,7 +126,6 @@ async def save_json(
                 if stream_data[stream]['path'][stream_data[stream]['part']]['absolute_path'].exists() else 0) >= config.get('file_size'):
             # TODO: post processing
             if post_processing:
-                LOGGER.info('******post processing')
                 await post_processing(config, stream_data[stream]['path'][stream_data[stream]['part']])
             LOGGER.debug("File '%s' saved using open_func '%s'",
                          stream_data[stream]['path'][stream_data[stream]['part']]['absolute_path'], config['open_func'].__name__)
@@ -149,9 +148,7 @@ async def save_json(
 
     # NOTE: Closure: no more records
     else:
-        # CHANGED FROM FORK
-        # Only post-process the current stream, not all of them
-        for file_info in [stream_data[stream]]:
+        for file_info in stream_data.values():
             if config.get('memory_buffer') is not None:
                 await save(config, file_info['path'][file_info['part']], file_info['file_data'])
             # TODO: post processing
@@ -159,7 +156,6 @@ async def save_json(
                 await post_processing(config, file_info['path'][file_info['part']])
             LOGGER.debug("File '%s' saved using open_func '%s'",
                          stream_data[stream]['path'][stream_data[stream]['part']]['absolute_path'], config['open_func'].__name__)
-
 
 
 # from io import BytesIO

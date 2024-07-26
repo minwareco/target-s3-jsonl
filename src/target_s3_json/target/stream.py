@@ -197,13 +197,8 @@ class Loader():
                 getcontext().prec = max(_all_precisions(line['schema']), default=max(1, getcontext().prec))
                 LOGGER.debug('Setting decimal precision to {}'.format(getcontext().prec))
 
-                # CHANGED FROM FORK
-                # copy before pop
-                origline = line.copy()
-
                 # NOTE: prevent exception *** jsonschema.exceptions.UnknownType: Unknown type 'SCHEMA' for validator.
                 #       'type' is a key word for jsonschema validator which is different from `{'type': 'SCHEMA'}` as the message type.
-
                 schemas[stream].pop('type')
                 validators[stream] = Draft4Validator(schemas[stream], format_checker=FormatChecker())
 
@@ -213,10 +208,6 @@ class Loader():
                 LOGGER.debug('Setting schema for {}'.format(stream))
 
                 self.set_schemas(stream, self.config, self.stream_data, schemas[stream])
-
-                # CHANGED FROM FORK
-                # Also write the schema line to the appropriate file, do this before popping 'type'
-                await self.writeline(stream, self.stream_data, self.config, origline)
 
             elif message_type == 'ACTIVATE_VERSION':
                 LOGGER.debug(f'ACTIVATE_VERSION {raw_line}')
@@ -240,16 +231,11 @@ class Loader():
                 # validators[stream].validate(_float_to_decimal(record_to_load))
                 validators[stream].validate(record_to_load)
 
-                # CHANGED FROM FORK
-                # Just write the whole raw line
-                await self.writeline(stream, self.stream_data, self.config, line)
-                '''
                 record_to_load = _add_metadata_values_to_record(line, {}, self.config['date_time']) \
                     if self.config.get('add_metadata_columns') \
                     else _remove_metadata_values_from_record(line)
 
                 await self.writeline(stream, self.stream_data, self.config, record_to_load)
-                '''
 
                 self.state = None
 
