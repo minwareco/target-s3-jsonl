@@ -10,7 +10,7 @@ from uuid import uuid4
 from asyncio import to_thread
 
 # Package imports
-from ._logger import get_logger
+from target._logger import get_logger
 
 LOGGER = get_logger()
 

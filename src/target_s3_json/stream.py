@@ -13,7 +13,7 @@ from copy import deepcopy
 from jsonschema import Draft4Validator, FormatChecker
 
 from .file import set_schema, save_json, config_file, config_compression
-from ._logger import get_logger
+from target._logger import get_logger
 LOGGER = get_logger()
 
 

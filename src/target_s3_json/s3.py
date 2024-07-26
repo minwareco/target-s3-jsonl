@@ -17,9 +17,8 @@ from boto3.session import Session
 from botocore.exceptions import ClientError
 from botocore.client import BaseClient
 
-from .target.stream import Loader
-from .target import file
-from .target.file import config_file, save_json
+from .stream import Loader
+from .file import config_file, save_json, config_compression
 
 from target._logger import get_logger
 LOGGER = get_logger()
@@ -283,7 +282,7 @@ def main(lines: TextIO = sys.stdin) -> None:
         if curTime == lastTime:
             sleep(1)
         lastTime = curTime
-        config = file.config_compression(config_file(curConfig))
+        config = config_compression(config_file(curConfig))
         if not client:
             client = create_session(config).client('s3', **({'endpoint_url': config.get('aws_endpoint_url')}
                                                         if config.get('aws_endpoint_url') else {}))
