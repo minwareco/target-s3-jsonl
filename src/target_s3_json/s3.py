@@ -17,9 +17,9 @@ from boto3.session import Session
 from botocore.exceptions import ClientError
 from botocore.client import BaseClient
 
-from target.stream import Loader
-from target import file
-from target.file import config_file, save_json
+from .target.stream import Loader
+from .target import file
+from .target.file import config_file, save_json
 
 from target._logger import get_logger
 LOGGER = get_logger()
