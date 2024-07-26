@@ -192,6 +192,8 @@ def config_s3(config_default: Dict[str, Any], datetime_format: Dict[str, str] = 
     return config_default
 
 curSchemaBuffer = b''
+lastFlushTime = time.time()
+FLUSH_STATE_AFTER_SECONDS = 60 * 10
 
 class WrappedIoBuffer():
     def __init__(self, input: BufferedIOBase) -> None:
@@ -212,6 +214,8 @@ class WrappedIoBuffer():
         return False
 
     def readMore(self):
+        global lastFlushTime
+
         if self.empty or self.closed:
             return
         readData = self.input.readline()
@@ -225,10 +229,13 @@ class WrappedIoBuffer():
             LOGGER.error(f'Unable to parse:\n{readData}')
             raise
 
-        # Don't read any more after the state
+        # Don't read any more after the state if we want to let it flush
         if line['type'] == 'STATE':
-            self.empty = True
-            self.stoppedState = True
+            curTime = time.time()
+            if curTime - lastFlushTime > FLUSH_STATE_AFTER_SECONDS:
+                self.empty = True
+                self.stoppedState = True
+                lastFlushTime = curTime
         # Save schemas becuase they have to be output after each state
         if line['type'] == 'SCHEMA':
             global curSchemaBuffer
