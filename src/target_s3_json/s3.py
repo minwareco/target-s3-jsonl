@@ -192,16 +192,16 @@ def config_s3(config_default: Dict[str, Any], datetime_format: Dict[str, str] = 
 
 curSchemaBuffer = b''
 lastFlushTime = time.time()
-FLUSH_STATE_AFTER_SECONDS = 60 * 10
 
 class WrappedIoBuffer():
-    def __init__(self, input: BufferedIOBase) -> None:
+    def __init__(self, input: BufferedIOBase, flushSeconds) -> None:
         self.input = input
         self.closed = False
         self.empty = False
         self.buffer = curSchemaBuffer
         self.storedLine = False
         self.stoppedState = False
+        self.flushSeconds = flushSeconds
 
     def readable(self):
         return not self.closed
@@ -231,7 +231,7 @@ class WrappedIoBuffer():
         # Don't read any more after the state if we want to let it flush
         if line['type'] == 'STATE':
             curTime = time.time()
-            if curTime - lastFlushTime > FLUSH_STATE_AFTER_SECONDS:
+            if curTime - lastFlushTime > self.flushSeconds:
                 self.empty = True
                 self.stoppedState = True
                 lastFlushTime = curTime
@@ -257,10 +257,10 @@ class WrappedIoBuffer():
         return readData
 
 class WrappedTextIO():
-    def __init__(self, input: TextIO) -> None:
+    def __init__(self, input: TextIO, flushSeconds) -> None:
         self.input = input
         self.hasMore = True
-        self.buffer = WrappedIoBuffer(input.buffer)
+        self.buffer = WrappedIoBuffer(input.buffer, flushSeconds)
 
     def stoppedState(self):
         return self.buffer.stoppedState
@@ -276,13 +276,13 @@ def main(lines: TextIO = sys.stdin) -> None:
     curConfig = config_s3(json.loads(Path(args.config).read_text(encoding='utf-8')))
     client: BaseClient = None
     while True:
-        curLines = WrappedTextIO(lines)
         # Make sure file names don't collide
         curTime = round(time.time())
         if curTime == lastTime:
             sleep(1)
         lastTime = curTime
         config = config_compression(config_file(curConfig))
+        curLines = WrappedTextIO(lines, config.get('flush_seconds') if config.get('flush_seconds') else 10*60)
         if not client:
             client = create_session(config).client('s3', **({'endpoint_url': config.get('aws_endpoint_url')}
                                                         if config.get('aws_endpoint_url') else {}))
