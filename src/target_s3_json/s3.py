@@ -73,6 +73,10 @@ def create_session(config: Dict) -> Session:
     aws_profile = config.get('aws_profile') or environ.get('AWS_PROFILE')
     aws_endpoint_url = config.get('aws_endpoint_url')
     role_arn = config.get('role_arn')
+    proxies = config.get('proxy') or {
+        'http': environ.get('HTTP_PROXY'),
+        'https': environ.get('HTTPS_PROXY')
+    }
 
     endpoint_params = {'endpoint_url': aws_endpoint_url} if aws_endpoint_url else {}
 
@@ -81,10 +85,11 @@ def create_session(config: Dict) -> Session:
         aws_session: Session = Session(
             aws_access_key_id=aws_access_key_id,
             aws_secret_access_key=aws_secret_access_key,
-            aws_session_token=aws_session_token)
+            aws_session_token=aws_session_token,
+            config={ proxies: proxies })
     # NOTE: AWS Profile based authentication
     else:
-        aws_session = Session(profile_name=aws_profile)
+        aws_session = Session(profile_name=aws_profile, config={ proxies: proxies })
 
     # NOTE: AWS credentials based authentication assuming specific IAM role
     if role_arn:
@@ -96,7 +101,7 @@ def create_session(config: Dict) -> Session:
             'aws_secret_access_key': resp['Credentials']['SecretAccessKey'],
             'aws_session_token': resp['Credentials']['SessionToken'],
         }
-        aws_session = Session(**credentials)
+        aws_session = Session(**credentials, config={ proxies: proxies })
         LOGGER.info(f'Creating s3 session with role {role_name}')
 
     return aws_session
