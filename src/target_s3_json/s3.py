@@ -16,6 +16,7 @@ import backoff
 from boto3.session import Session
 from botocore.exceptions import ClientError
 from botocore.client import BaseClient
+from botocore.client import Config
 
 from .stream import Loader
 from .file import config_file, save_json, config_compression
@@ -64,8 +65,6 @@ def config_compression(config_default: Dict) -> Dict:
 
 @_retry_pattern()
 def create_session(config: Dict) -> Session:
-    LOGGER.debug('Attempting to create AWS session')
-
     # NOTE: Get the required parameters from config file and/or environment variables
     aws_access_key_id = config.get('aws_access_key_id') or environ.get('AWS_ACCESS_KEY_ID')
     aws_secret_access_key = config.get('aws_secret_access_key') or environ.get('AWS_SECRET_ACCESS_KEY')
@@ -73,10 +72,6 @@ def create_session(config: Dict) -> Session:
     aws_profile = config.get('aws_profile') or environ.get('AWS_PROFILE')
     aws_endpoint_url = config.get('aws_endpoint_url')
     role_arn = config.get('role_arn')
-    proxies = config.get('proxy') or {
-        'http': environ.get('HTTP_PROXY'),
-        'https': environ.get('HTTPS_PROXY')
-    }
 
     endpoint_params = {'endpoint_url': aws_endpoint_url} if aws_endpoint_url else {}
 
@@ -85,11 +80,10 @@ def create_session(config: Dict) -> Session:
         aws_session: Session = Session(
             aws_access_key_id=aws_access_key_id,
             aws_secret_access_key=aws_secret_access_key,
-            aws_session_token=aws_session_token,
-            config={ proxies: proxies })
+            aws_session_token=aws_session_token)
     # NOTE: AWS Profile based authentication
     else:
-        aws_session = Session(profile_name=aws_profile, config={ proxies: proxies })
+        aws_session = Session(profile_name=aws_profile)
 
     # NOTE: AWS credentials based authentication assuming specific IAM role
     if role_arn:
@@ -101,7 +95,7 @@ def create_session(config: Dict) -> Session:
             'aws_secret_access_key': resp['Credentials']['SecretAccessKey'],
             'aws_session_token': resp['Credentials']['SessionToken'],
         }
-        aws_session = Session(**credentials, config={ proxies: proxies })
+        aws_session = Session(**credentials)
         LOGGER.info(f'Creating s3 session with role {role_name}')
 
     return aws_session
@@ -280,6 +274,7 @@ def main(lines: TextIO = sys.stdin) -> None:
     save_s3: Callable = partial(save_json, post_processing=upload_thread)
     curConfig = config_s3(json.loads(Path(args.config).read_text(encoding='utf-8')))
     client: BaseClient = None
+    
     while True:
         # Make sure file names don't collide
         curTime = round(time.time())
@@ -287,10 +282,20 @@ def main(lines: TextIO = sys.stdin) -> None:
             sleep(1)
         lastTime = curTime
         config = config_compression(config_file(curConfig))
+        proxy_config = {}
+        if config.get('proxies'):
+            proxy_config = config.get('proxies')
+        if environ.get('HTTP_PROXY', None):
+            proxy_config = {
+                'http': environ.get('HTTP_PROXY'),
+                'https': environ.get('HTTPS_PROXY')
+            }
+
         curLines = WrappedTextIO(lines, config.get('flush_seconds') if config.get('flush_seconds') else 10*60)
         if not client:
-            client = create_session(config).client('s3', **({'endpoint_url': config.get('aws_endpoint_url')}
-                                                        if config.get('aws_endpoint_url') else {}))
+            client = create_session(config).client('s3',
+                                                   **({'endpoint_url': config.get('aws_endpoint_url')} if config.get('aws_endpoint_url') else {}),
+                                                   config=Config(proxies=proxy_config))
         with ThreadPoolExecutor() as executor:
             Loader(config | {'client': client, 'executor': executor, 'add_metadata_columns': True }, writeline=save_s3).run(curLines)
         if not curLines.stoppedState():
