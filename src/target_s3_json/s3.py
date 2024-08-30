@@ -242,9 +242,6 @@ class WrappedIoBuffer():
         self.buffer += readData
 
     def read(self, size):
-        if self.empty:
-            self.closed = True
-            return b''
         readSize = 8192 if size == -1 else size
         if len(self.buffer) < readSize:
             self.readMore()
