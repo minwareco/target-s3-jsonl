@@ -197,10 +197,11 @@ class WrappedIoBuffer():
         self.input = input
         self.closed = False
         self.empty = False
-        self.buffer = curSchemaBuffer
+        self.buffer = b""
         self.storedLine = False
         self.stoppedState = False
         self.flushSeconds = flushSeconds
+        self.needsInit = True
 
     def readable(self):
         return not self.closed
@@ -220,6 +221,10 @@ class WrappedIoBuffer():
         if not readData:
             self.empty = True
             return
+
+        if self.needsInit:
+            self.buffer += curSchemaBuffer
+            self.needsInit = False
 
         try:
             line = json.loads(readData)
