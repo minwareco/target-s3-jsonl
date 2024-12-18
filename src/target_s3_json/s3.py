@@ -214,6 +214,7 @@ class WrappedIoBuffer():
 
     def readMore(self):
         global lastFlushTime
+        global curSchemaBuffer
 
         if self.empty or self.closed:
             return
@@ -241,7 +242,6 @@ class WrappedIoBuffer():
                 lastFlushTime = curTime
         # Save schemas becuase they have to be output after each state
         if line['type'] == 'SCHEMA':
-            global curSchemaBuffer
             curSchemaBuffer += readData
 
         self.buffer += readData
