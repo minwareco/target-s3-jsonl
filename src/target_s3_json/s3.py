@@ -10,7 +10,6 @@ import lzma
 import time
 from typing import Callable, Dict, Any, List, TextIO
 from asyncio import sleep, to_thread
-from concurrent.futures import ThreadPoolExecutor, Future
 
 import backoff
 from boto3.session import Session
@@ -137,11 +136,11 @@ def put_object(config: Dict[str, Any], file_metadata: Dict, stream_data: List) -
 
 
 @_retry_pattern()
-def upload_file(config: Dict[str, Any], file_metadata: Dict) -> None:
+async def upload_file(config: Dict[str, Any], file_metadata: Dict) -> None:
     if not config.get('local', False) and (file_metadata['absolute_path'].stat().st_size if file_metadata['absolute_path'].exists() else 0) > 0:
         encryption_desc, encryption_args = get_encryption_args(config)
 
-        config['client'].upload_file(
+        await to_thread(config['client'].upload_file,
             file_metadata['absolute_path'].as_posix(),
             config.get('s3_bucket'),
             file_metadata['relative_path'],
@@ -153,16 +152,6 @@ def upload_file(config: Dict[str, Any], file_metadata: Dict) -> None:
         if config.get('remove_file', True):
             # NOTE: Remove the local file(s)
             file_metadata['absolute_path'].unlink()  # missing_ok=False
-
-
-async def upload_thread(config: Dict[str, Any], file_metadata: Dict) -> Future:
-
-    return await to_thread(
-        *([config['executor'].submit] if config.get('thread_pool', True) else []),
-        upload_file,
-        config,
-        file_metadata)
-
 
 def config_s3(config_default: Dict[str, Any], datetime_format: Dict[str, str] = {
         'date_time_format': ':%Y%m%dT%H%M%S',
@@ -273,7 +262,7 @@ def main(lines: TextIO = sys.stdin) -> None:
     parser.add_argument('-c', '--config', help='Config file', required=True)
     args = parser.parse_args()
     lastTime = 0
-    save_s3: Callable = partial(save_json, post_processing=upload_thread)
+    save_s3: Callable = partial(save_json, post_processing=upload_file)
     curConfig = config_s3(json.loads(Path(args.config).read_text(encoding='utf-8')))
     client: BaseClient = None
     
@@ -298,8 +287,8 @@ def main(lines: TextIO = sys.stdin) -> None:
             client = create_session(config).client('s3',
                                                    **({'endpoint_url': config.get('aws_endpoint_url')} if config.get('aws_endpoint_url') else {}),
                                                    config=Config(proxies=proxy_config))
-        with ThreadPoolExecutor() as executor:
-            Loader(config | {'client': client, 'executor': executor, 'add_metadata_columns': True }, writeline=save_s3).run(curLines)
+        
+        Loader(config | {'client': client, 'add_metadata_columns': True }, writeline=save_s3).run(curLines)
         if not curLines.stoppedState():
             break
 
