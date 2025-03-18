@@ -20,6 +20,7 @@ from botocore.client import Config
 
 from .stream import Loader
 from .file import config_file, save_json, config_compression
+from .snowflake import SnowflakeStage, parse_path_template, SnowflakeError
 
 from target._logger import get_logger
 LOGGER = get_logger()
@@ -302,6 +303,28 @@ def main(lines: TextIO = sys.stdin) -> None:
             Loader(config | {'client': client, 'executor': executor, 'add_metadata_columns': True }, writeline=save_s3).run(curLines)
         if not curLines.stoppedState():
             break
+    
+    # After processing is complete, create and refresh the Snowflake stage
+    try:
+        # Parse the path template to get components
+        components = parse_path_template(config['path_template'])
+        
+        # Create Snowflake stage instance
+        snowflake = SnowflakeStage(components)
+        
+        # Create the stage
+        snowflake.create_s3_stage(s3_bucket=config['s3_bucket'])
+        
+        # Refresh the directory
+        snowflake.refresh_directory()
+        
+        LOGGER.info("Successfully created and refreshed Snowflake stage")
+    except SnowflakeError as e:
+        LOGGER.error(f"Failed to create/refresh Snowflake stage: {str(e)}")
+        sys.exit(e.exit_code)
+    except Exception as e:
+        LOGGER.error(f"Unexpected error during Snowflake operations: {str(e)}")
+        sys.exit(3)  # Use a different exit code for unexpected errors
 
 
 

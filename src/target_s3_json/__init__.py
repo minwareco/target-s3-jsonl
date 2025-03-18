@@ -7,6 +7,11 @@ __version__ = '2.1.0'
 # Package imports
 # from target._logger import get_logger
 from .s3 import main
+from .snowflake import (
+    SnowflakeStage,
+    PathComponents,
+    parse_path_template
+)
 
 # LOGGER = get_logger(Path(__file__).with_name('logging.conf'))
 
