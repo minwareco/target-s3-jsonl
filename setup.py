@@ -6,6 +6,6 @@ setup(
     install_requires=[
         'target-core==0.1.0',
         'boto3==1.26.82',
-        'snowflake-connector-python==3.6.1'
+        'snowflake-connector-python>=3.12.0'
     ]
 )
