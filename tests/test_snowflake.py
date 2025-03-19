@@ -54,17 +54,17 @@ def test_parse_path_template_empty():
     assert "Path template must have at least 3 components" in str(exc_info.value)
     assert "got: " in str(exc_info.value)
 
-def test_parse_path_template_production_paths():
-    """Test parsing real production path templates."""
-    # Read production paths from JSON file
+def test_parse_path_template_path_templates():
+    """Test parsing path templates."""
+    # Read path_templates from JSON file
     test_data_path = Path(__file__).parent / "resources" / "path_templates.json"
     with open(test_data_path, 'r') as f:
-        production_paths_json = json.load(f)
+        path_templates_json = json.load(f)
     
     # UUID pattern for validation
     uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
     
-    for path_obj in production_paths_json:
+    for path_obj in path_templates_json:
         result = parse_path_template(path_obj["path"])
         
         assert isinstance(result, PathComponents)
