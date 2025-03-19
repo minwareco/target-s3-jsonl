@@ -57,7 +57,7 @@ def test_parse_path_template_empty():
 def test_parse_path_template_production_paths():
     """Test parsing real production path templates."""
     # Read production paths from JSON file
-    test_data_path = Path(__file__).parent / "resources" / "production_paths.json"
+    test_data_path = Path(__file__).parent / "resources" / "path_templates.json"
     with open(test_data_path, 'r') as f:
         production_paths_json = json.load(f)
     
