@@ -19,13 +19,6 @@ import re
 
 LOGGER = get_logger()
 
-class SnowflakeError(Exception):
-    """Custom exception for Snowflake-related errors."""
-    def __init__(self, message: str, exit_code: int = 2):
-        self.message = message
-        self.exit_code = exit_code
-        super().__init__(self.message)
-
 class PathComponents(NamedTuple):
     """Components extracted from a path template."""
     org_id: str
@@ -47,24 +40,33 @@ class SnowflakeStage:
         """
         self.path_components = path_components
         self._connection_params = self._get_connection_params()
-        self.stage_name = self._create_stage_name()
         self.schema_name = self._create_schema_name()
+        self.stage_name = self._create_stage_name()
     
     @staticmethod
     def _get_connection_params() -> Dict[str, str]:
         """Get Snowflake connection parameters from environment variables."""
-        required_params = [
-            'USERNAME', 'PASSWORD', 'ACCOUNT', 
-            'WAREHOUSE', 'DATABASE'
-        ]
+        # Map environment variable names to Snowflake connector parameter names
+        param_mapping = {
+            'USERNAME': 'user',
+            'PASSWORD': 'password',
+            'ACCOUNT': 'account',
+            'WAREHOUSE': 'warehouse',
+            'DATABASE': 'database',
+            'ROLE': 'role`'
+        }
         
         params = {}
-        for param in required_params:
-            env_var = f'SNOWFLAKE_{param}'
+        for env_param, connector_param in param_mapping.items():
+            env_var = f'SNOWFLAKE_{env_param}'
             value = os.environ.get(env_var)
             if not value:
                 raise ValueError(f"Missing required environment variable: {env_var}")
-            params[param.lower()] = value
+            params[connector_param] = value
+            
+            # Log connection parameters (except password)
+            if connector_param != 'password':
+                LOGGER.info(f"Snowflake connection parameter {connector_param}: {value}")
         
         return params
     
