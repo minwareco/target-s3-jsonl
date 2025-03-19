@@ -3,28 +3,16 @@
       "path": "f7106ea9-9ff0-4eba-8a58-067c8c1ac832/azuregit/b7345f5f-b098-4311-894c-d04f2e757ca7/{date_time:%Y}/{date_time:%m}/{date_time:%d}/{date_time:%H%M%S}/{stream}_part_{part:0>5}.jsonl"
     },
     {
-      "path": "f7106ea9-9ff0-4eba-8a58-067c8c1ac832/azuregit/bc35ef5b-3ca1-4f55-8350-4d7d781bcc50/{date_time:%Y}/{date_time:%m}/{date_time:%d}/{date_time:%H%M%S}/{stream}_part_{part:0>5}.jsonl"
-    },
-    {
       "path": "f7106ea9-9ff0-4eba-8a58-067c8c1ac832/azuretickets/{date_time:%Y}/{date_time:%m}/{date_time:%d}/{date_time:%H%M%S}/{stream}_part_{part:0>5}.jsonl"
     },
     {
       "path": "eab13fc7-9d03-4a41-ad53-618e1a2cde5c/bitbucket/c3da74a1-d4c1-4d00-bc25-c36545f744bc/{date_time:%Y}/{date_time:%m}/{date_time:%d}/{date_time:%H%M%S}/{stream}_part_{part:0>5}.jsonl"
     },
     {
-      "path": "eab13fc7-9d03-4a41-ad53-618e1a2cde5c/bitbucket/029e2f86-b913-4680-9e94-43d32fc80d59/{date_time:%Y}/{date_time:%m}/{date_time:%d}/{date_time:%H%M%S}/{stream}_part_{part:0>5}.jsonl"
-    },
-    {
       "path": "edb7cb5f-ccea-4cfe-b9ad-5e81956f1349/github/33960769-5c60-4b21-a0f4-071d18a82e26/{date_time:%Y}/{date_time:%m}/{date_time:%d}/{date_time:%H%M%S}/{stream}_part_{part:0>5}.jsonl"
     },
     {
-      "path": "edb7cb5f-ccea-4cfe-b9ad-5e81956f1349/github/35dafd32-1e6b-4163-a2f3-9c7990466639/{date_time:%Y}/{date_time:%m}/{date_time:%d}/{date_time:%H%M%S}/{stream}_part_{part:0>5}.jsonl"
-    },
-    {
       "path": "eeccbbc6-c635-4ae6-b9af-ec4212f34995/gitlab/cbdcdb57-6d6e-44bc-9e8f-0439af85e737/{date_time:%Y}/{date_time:%m}/{date_time:%d}/{date_time:%H%M%S}/{stream}_part_{part:0>5}.jsonl"
-    },
-    {
-      "path": "eeccbbc6-c635-4ae6-b9af-ec4212f34995/gitlab/0cf63d9a-283d-43b0-bafb-d6065e32adf5/{date_time:%Y}/{date_time:%m}/{date_time:%d}/{date_time:%H%M%S}/{stream}_part_{part:0>5}.jsonl"
     },
     {
       "path": "edb7cb5f-ccea-4cfe-b9ad-5e81956f1349/mwblame/35dafd32-1e6b-4163-a2f3-9c7990466639/{date_time:%Y}/{date_time:%m}/{date_time:%d}/{date_time:%H%M%S}/{stream}_part_{part:0>5}.jsonl"
