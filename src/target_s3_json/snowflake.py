@@ -53,7 +53,7 @@ class SnowflakeStage:
             'ACCOUNT': 'account',
             'WAREHOUSE': 'warehouse',
             'DATABASE': 'database',
-            'ROLE': 'role`'
+            'ROLE': 'role'
         }
         
         params = {}
@@ -88,8 +88,8 @@ class SnowflakeStage:
         return value.replace('-', '').upper()
     
     def _create_stage_name(self) -> str:
-        """Create a Snowflake stage name in the format T_ORGID_SOURCE.S3_STAGE"""
-        return f"{self.schema_name}.S3_STAGE"
+        """Create a Snowflake stage name in the format S3_STAGE"""
+        return "S3_STAGE"
     
     def _create_schema_name(self) -> str:
         """Create a Snowflake schema name in the format T_ORGID_SOURCE."""
