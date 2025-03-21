@@ -38,6 +38,7 @@ class SnowflakeStage:
         Args:
             path_components: PathComponents containing org_id, source, and repo_id
         """
+        self._conn = None  # Connection will be created on first use
         self.path_components = path_components
         self._connection_params = self._get_connection_params()
         self.schema_name = self._create_schema_name()
@@ -70,18 +71,21 @@ class SnowflakeStage:
         
         return params
     
+    def _get_connection(self):
+        """Get or create Snowflake connection."""
+        if not self._conn:
+            self._conn = snowflake.connector.connect(**self._connection_params)
+        return self._conn
+    
     def execute_query(self, query: str) -> List[Dict[str, Any]]:
-        """Execute a Snowflake query using stored connection parameters."""
-        conn = snowflake.connector.connect(**self._connection_params)
-        
+        """Execute a Snowflake query using the shared connection."""
+        conn = self._get_connection()
+        cur = conn.cursor(snowflake.connector.DictCursor)
         try:
-            cur = conn.cursor(snowflake.connector.DictCursor)
             cur.execute(query)
-            results = cur.fetchall()
-            return results
+            return cur.fetchall()
         finally:
             cur.close()
-            conn.close()
     
     def _clean_identifier(self, value: str) -> str:
         """Clean an identifier by removing hyphens and converting to uppercase."""
@@ -139,6 +143,12 @@ class SnowflakeStage:
             
         query = f"ALTER STAGE {stage_ref} REFRESH {subpath};"
         self.execute_query(query)
+    
+    def close(self):
+        """Close the Snowflake connection."""
+        if self._conn:
+            self._conn.close()
+            self._conn = None
 
 def parse_path_template(path_template: str) -> PathComponents:
     """

@@ -305,24 +305,22 @@ def main(lines: TextIO = sys.stdin) -> None:
             break
     
     # After processing is complete, create and refresh the Snowflake stage
+    stage = None
     try:
         # Parse the path template to get components
         components = parse_path_template(config['path_template'])
         
-        # Create Snowflake stage instance
-        snowflake = SnowflakeStage(components)
-        
-        # Create the stage
-        snowflake.create_s3_stage(s3_bucket=config['s3_bucket'])
-        
-        # Refresh the directory
-        snowflake.refresh_directory()
-        
-        LOGGER.info("Successfully created and refreshed Snowflake stage")
+        # Create Snowflake stage and refresh
+        stage = SnowflakeStage(components)
+        stage.create_s3_stage(s3_bucket=config['s3_bucket'])
+        stage.refresh_directory()
+            
     except Exception as e:
-        LOGGER.error(f"Unexpected error during Snowflake operations: {str(e)}")
-        sys.exit(3)  # Use a different exit code for unexpected errors
-
+        LOGGER.error(f"Failed to create or refresh Snowflake stage: {str(e)}")
+        sys.exit(2)  # Use consistent exit code for Snowflake errors
+    finally:
+        if stage:
+            stage.close()
 
 
 # from pyarrow import parquet
