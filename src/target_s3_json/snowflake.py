@@ -124,6 +124,11 @@ class SnowflakeStage:
         """
         self.execute_query(query)
         LOGGER.info(f"Created or verified stage: {self.schema_name}.{self.stage_name}")
+
+    def enable_directory_on_stage(self) -> None:
+        """Enable directory on the stage."""
+        query = f"ALTER STAGE {self.schema_name}.{self.stage_name} SET DIRECTORY = (ENABLE = TRUE);"
+        self.execute_query(query)
     
     def refresh_directory(self) -> None:
         """

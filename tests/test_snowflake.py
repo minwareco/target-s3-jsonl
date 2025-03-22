@@ -2,7 +2,8 @@ import pytest
 import json
 import re
 from pathlib import Path
-from target_s3_json.snowflake import parse_path_template, PathComponents
+from unittest.mock import patch, MagicMock
+from target_s3_json.snowflake import parse_path_template, PathComponents, SnowflakeStage
 
 def test_parse_path_template_valid():
     """Test parsing a valid path template."""
@@ -80,3 +81,25 @@ def test_parse_path_template_path_templates():
             # For other sources, repo_id should be a UUID
             assert len(result.repo_id) == 36, f"Invalid UUID length for repo_id: {result.repo_id}"
             assert uuid_pattern.match(result.repo_id), f"Invalid UUID format for repo_id: {result.repo_id}" 
+
+def test_enable_directory_on_stage():
+    """Test that enable_directory_on_stage generates the correct SQL query."""
+    # Create a PathComponents with a known UUID and source
+    components = PathComponents(
+        org_id="e459f0ee-9ed2-4232-bada-dc4c05bdfd10",
+        source="github",
+        repo_id="f159f0ee-9ed2-4232-bada-dc4c05bdfd10"
+    )
+    
+    # Create SnowflakeStage instance
+    stage = SnowflakeStage(components)
+    
+    # Mock execute_query to capture the query
+    with patch.object(stage, 'execute_query') as mock_execute:
+        # Call the function
+        stage.enable_directory_on_stage()
+        
+        # Verify execute_query was called with the correct query
+        mock_execute.assert_called_once_with(
+            "ALTER STAGE T_E459F0EE9ED24232BADADC4C05BDFD10_GITHUB.S3_STAGE SET DIRECTORY = (ENABLE = TRUE);"
+        ) 
