@@ -129,7 +129,7 @@ class SnowflakeStage:
         """Enable directory on the stage."""
         query = f"ALTER STAGE {self.schema_name}.{self.stage_name} SET DIRECTORY = (ENABLE = TRUE);"
         self.execute_query(query)
-    
+        LOGGER.info(f"Enabled directory on stage: {self.schema_name}.{self.stage_name}")
     def refresh_directory(self) -> None:
         """
         Refresh a Snowflake directory for the stage.
