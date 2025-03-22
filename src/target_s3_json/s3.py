@@ -317,6 +317,7 @@ def main(lines: TextIO = sys.stdin) -> None:
         # Enabling directory on the stage is necessary as there are existing
         # stages which may not have the directory enabled
         # TODO: Remove this once stages are exclusively created by this target
+        # https://minware.atlassian.net/browse/MW-5838
         stage.enable_directory_on_stage()
         stage.refresh_directory()
             
