@@ -1,3 +1,4 @@
+import json
 import sys
 import os
 import unittest
@@ -197,6 +198,7 @@ class TestCleanupIntegration(unittest.TestCase):
         
         # Should return empty results since no objects found
         assert result == {'files_processed': 0, 'files_without_records': 0, 'files_deleted': 0}
+
 
 if __name__ == '__main__':
     unittest.main()
