@@ -17,6 +17,7 @@ from boto3.session import Session
 from botocore.exceptions import ClientError
 from botocore.client import BaseClient
 from botocore.client import Config
+from target_s3_json.s3_cleanup import cleanup_empty_jsonl_files
 
 from .stream import Loader
 from .file import config_file, save_json, config_compression
@@ -303,12 +304,18 @@ def main(lines: TextIO = sys.stdin) -> None:
             Loader(config | {'client': client, 'executor': executor, 'add_metadata_columns': True }, writeline=save_s3).run(curLines)
         if not curLines.stoppedState():
             break
-    
+
+        # Parse the path template to get components
+        components = parse_path_template(config['path_template'])
+        
+        # Run cleanup using the parsed components
+        try:
+            cleanup_empty_jsonl_files(bucket=config['s3_bucket'], client=client, path_components=components)
+        except Exception as e:
+            LOGGER.error(f"Failed to cleanup empty JSONL files: {str(e)}")
     # After processing is complete, create and refresh the Snowflake stage
     stage = None
     try:
-        # Parse the path template to get components
-        components = parse_path_template(config['path_template'])
         
         # Create Snowflake stage and refresh
         stage = SnowflakeStage(components)
