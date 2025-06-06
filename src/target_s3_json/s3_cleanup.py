@@ -188,6 +188,9 @@ def cleanup_empty_jsonl_files(bucket: str, client: BaseClient, path_components: 
         
         # List all objects in the bucket with the given prefix
         listed_files = set()  # Track files we've seen to detect duplicates
+        files_to_delete = []  # Collect files for batch deletion
+        
+        # List all objects in the bucket with the given prefix
         for obj in list_s3_objects(client, bucket, prefix):
             key = obj['Key']
             size = obj['Size']
@@ -212,6 +215,7 @@ def cleanup_empty_jsonl_files(bucket: str, client: BaseClient, path_components: 
                     LOGGER.info(f"File s3://{bucket}/{key} has no RECORD entries")
                     
                     files_to_delete.append(key)
+                    LOGGER.info(f"Added file s3://{bucket}/{key} to deletion queue (queue size: {len(files_to_delete)})")
                     
                     # Batch delete when we hit 1000 files (S3 limit)
                     if len(files_to_delete) >= 1000:
