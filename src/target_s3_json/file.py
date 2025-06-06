@@ -97,7 +97,8 @@ def set_schema(stream: str, config: Dict, stream_data: Dict, schema: Dict = {}) 
             'part': 1,
             'path': {1: {'relative_path': relative_path,
                          'absolute_path': config['work_path'] / relative_path}},
-            'file_data': []}
+            'file_data': [],
+            'has_records': False}
 
         for path in stream_data[stream]['path'].values():
             # Don't do this since we're putting multiple streamsin the same file
@@ -140,6 +141,9 @@ async def save_json(
                     'absolute_path': config['work_path'] / relative_path}}
 
         await save(config, stream_data[stream]['path'][stream_data[stream]['part']], [record])
+        # Only mark as having records if this is an actual data record (schema and state do not matter)
+        if record.get('type') == 'RECORD':
+            stream_data[stream]['has_records'] = True
 
     # NOTE: If memory buffer limit
     elif record is not None:
@@ -147,6 +151,9 @@ async def save_json(
         if sys.getsizeof(stream_data[stream]['file_data']) >= config.get('memory_buffer', 0):  # NOTE: sys.getsizeof([]) == 56
             await save(config, stream_data[stream]['path'][stream_data[stream]['part']], stream_data[stream]['file_data'])
         stream_data[stream]['file_data'].append(record)
+        # Only mark as having records if this is an actual data record (schema and state do not matter)
+        if record.get('type') == 'RECORD':
+            stream_data[stream]['has_records'] = True
 
     # NOTE: Closure: no more records
     else:
@@ -155,11 +162,14 @@ async def save_json(
         for file_info in [stream_data[stream]]:
             if config.get('memory_buffer') is not None:
                 await save(config, file_info['path'][file_info['part']], file_info['file_data'])
-            # TODO: post processing
-            if post_processing:
-                await post_processing(config, file_info['path'][file_info['part']])
-            LOGGER.debug("File '%s' saved using open_func '%s'",
-                         stream_data[stream]['path'][stream_data[stream]['part']]['absolute_path'], config['open_func'].__name__)
+            
+            # Only do post processing (upload) if we actually processed records for this stream
+            if stream_data[stream]['has_records']:
+                if post_processing:
+                    await post_processing(config, file_info['path'][file_info['part']])
+            else:
+                LOGGER.debug("Skipping post processing for stream '%s' - no records to upload", stream)
+            LOGGER.debug("File '%s' saved using open_func '%s'", stream_data[stream]['path'][stream_data[stream]['part']]['absolute_path'], config['open_func'].__name__)
 
 
 
