@@ -178,6 +178,7 @@ class TestCleanupIntegration(unittest.TestCase):
         assert result['files_processed'] == 2
         assert result['files_without_records'] == 1
         assert result['files_deleted'] == 1
+        assert result['files_skipped_missing'] == 0
         
         # Verify batch delete was called
         mock_client.delete_objects.assert_called_once()
@@ -197,7 +198,51 @@ class TestCleanupIntegration(unittest.TestCase):
         result = cleanup_empty_jsonl_files(bucket, mock_client, path_components)
         
         # Should return empty results since no objects found
-        assert result == {'files_processed': 0, 'files_without_records': 0, 'files_deleted': 0}
+        assert result == {'files_processed': 0, 'files_without_records': 0, 'files_deleted': 0, 'files_skipped_missing': 0}
+    
+    def test_cleanup_with_concurrent_deletion(self):
+        """Test cleanup when files are deleted by concurrent processes"""
+        bucket = 'test-bucket'
+        path_components = PathComponents(
+            org_id='test-org',
+            source='github', 
+            repo_id='test-repo'
+        )
+        
+        mock_client = Mock()
+        
+        # Mock S3 objects
+        mock_client.get_paginator.return_value.paginate.return_value = [
+            {
+                'Contents': [
+                    {'Key': 'test-org/github/test-repo/file1.jsonl', 'Size': 100},
+                    {'Key': 'test-org/github/test-repo/file2.jsonl', 'Size': 200}
+                ]
+            }
+        ]
+        
+        # Mock get_object to raise NoSuchKey for file2 (simulating concurrent deletion)
+        def mock_get_object(Bucket, Key):
+            if 'file1.jsonl' in Key:
+                mock_body = Mock()
+                mock_body.read.return_value = b'{"type": "STATE", "value": {}}\n{"type": "RECORD", "record": {"id": 1}}'
+                return {'Body': mock_body}
+            else:
+                # Simulate file2 being deleted by another process
+                from botocore.exceptions import ClientError
+                error_response = {'Error': {'Code': 'NoSuchKey', 'Message': 'The specified key does not exist.'}}
+                raise ClientError(error_response, 'GetObject')
+        
+        mock_client.get_object.side_effect = mock_get_object
+        
+        # Run cleanup
+        result = cleanup_empty_jsonl_files(bucket, mock_client, path_components)
+        
+        # Verify results - file1 processed normally, file2 skipped due to NoSuchKey
+        assert result['files_processed'] == 2  # Both files were attempted
+        assert result['files_without_records'] == 0  # file1 had records, file2 was skipped
+        assert result['files_deleted'] == 0  # No files deleted
+        assert result['files_skipped_missing'] == 1  # file2 was missing
 
 
 if __name__ == '__main__':
