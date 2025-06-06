@@ -19,11 +19,19 @@ def _log_backoff_attempt(details: Dict) -> None:
 
 
 def _retry_pattern() -> Callable:
+    def giveup_on_nosuchkey(e):
+        """Don't retry on NoSuchKey errors - file is gone, no point retrying"""
+        if isinstance(e, ClientError):
+            error_code = e.response.get('Error', {}).get('Code', '')
+            return error_code == 'NoSuchKey'
+        return False
+    
     return backoff.on_exception(
         backoff.expo,
         ClientError,
         max_tries=5,
         on_backoff=_log_backoff_attempt,
+        giveup=giveup_on_nosuchkey,
         factor=10)
 
 
@@ -185,6 +193,7 @@ def cleanup_empty_jsonl_files(bucket: str, client: BaseClient, path_components: 
             # Skip if not a JSONL file
             if not is_jsonl_file(key):
                 continue
+            
                 
             files_processed += 1
             LOGGER.debug(f"Processing {key} ({size} bytes)")
@@ -203,6 +212,15 @@ def cleanup_empty_jsonl_files(bucket: str, client: BaseClient, path_components: 
                         files_deleted += deleted_count
                         files_to_delete = []  # Reset for next batch
                         
+            except ClientError as e:
+                error_code = e.response.get('Error', {}).get('Code', '')
+                if error_code == 'NoSuchKey':
+                    LOGGER.warning(f"File s3://{bucket}/{key} no longer exists (likely deleted by concurrent process)")
+                    # Continue processing other files - this is expected in concurrent scenarios
+                    continue
+                else:
+                    LOGGER.error(f"AWS error processing s3://{bucket}/{key}: {str(e)}")
+                    continue
             except Exception as e:
                 LOGGER.error(f"Error processing s3://{bucket}/{key}: {str(e)}")
                 continue
