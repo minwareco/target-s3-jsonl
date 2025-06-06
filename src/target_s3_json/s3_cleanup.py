@@ -183,11 +183,6 @@ def cleanup_empty_jsonl_files(bucket: str, client: BaseClient, path_components: 
         files_processed = 0
         files_without_records = 0
         files_deleted = 0
-        files_skipped_missing = 0  # Track files that disappeared during processing
-        files_to_delete = []  # Collect files for batch deletion
-        
-        # List all objects in the bucket with the given prefix
-        listed_files = set()  # Track files we've seen to detect duplicates
         files_to_delete = []  # Collect files for batch deletion
         
         # List all objects in the bucket with the given prefix
@@ -199,11 +194,6 @@ def cleanup_empty_jsonl_files(bucket: str, client: BaseClient, path_components: 
             if not is_jsonl_file(key):
                 continue
             
-            # Check for duplicate listings (shouldn't happen but let's verify)
-            if key in listed_files:
-                LOGGER.warning(f"File {key} listed multiple times in S3 pagination - this suggests a pagination issue")
-                continue
-            listed_files.add(key)
                 
             files_processed += 1
             LOGGER.debug(f"Processing {key} ({size} bytes)")
@@ -215,7 +205,6 @@ def cleanup_empty_jsonl_files(bucket: str, client: BaseClient, path_components: 
                     LOGGER.info(f"File s3://{bucket}/{key} has no RECORD entries")
                     
                     files_to_delete.append(key)
-                    LOGGER.info(f"Added file s3://{bucket}/{key} to deletion queue (queue size: {len(files_to_delete)})")
                     
                     # Batch delete when we hit 1000 files (S3 limit)
                     if len(files_to_delete) >= 1000:
@@ -226,7 +215,6 @@ def cleanup_empty_jsonl_files(bucket: str, client: BaseClient, path_components: 
             except ClientError as e:
                 error_code = e.response.get('Error', {}).get('Code', '')
                 if error_code == 'NoSuchKey':
-                    files_skipped_missing += 1
                     LOGGER.warning(f"File s3://{bucket}/{key} no longer exists (likely deleted by concurrent process)")
                     # Continue processing other files - this is expected in concurrent scenarios
                     continue
@@ -246,14 +234,11 @@ def cleanup_empty_jsonl_files(bucket: str, client: BaseClient, path_components: 
         LOGGER.info(f"  Files processed: {files_processed}")
         LOGGER.info(f"  Files without RECORD entries: {files_without_records}")
         LOGGER.info(f"  Files deleted: {files_deleted}")
-        if files_skipped_missing > 0:
-            LOGGER.warning(f"  Files skipped (missing): {files_skipped_missing}")
         
         return {
             'files_processed': files_processed,
             'files_without_records': files_without_records,
-            'files_deleted': files_deleted,
-            'files_skipped_missing': files_skipped_missing
+            'files_deleted': files_deleted
         }
             
     except Exception as e:
