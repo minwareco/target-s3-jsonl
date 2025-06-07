@@ -128,24 +128,13 @@ def delete_s3_objects_batch(client: BaseClient, bucket: str, keys: List[str]) ->
     """
     if not keys:
         return 0
-    
-    # Ensure keys are properly formatted for XML request
-    delete_objects = []
-    for key in keys:
-        # Clean up any potential issues with the key formatting
-        clean_key = key.strip()
-        if clean_key:  # Only add non-empty keys
-            delete_objects.append({'Key': clean_key})
-            LOGGER.info(f"Adding key to delete: {clean_key}")
-    
-    if not delete_objects:
-        return 0
+
     
     try:
         response = client.delete_objects(
             Bucket=bucket,
             Delete={
-                'Objects': delete_objects,
+                'Objects': keys,
                 'Quiet': False  # We want to see both successes and failures
             }
         )
