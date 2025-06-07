@@ -136,6 +136,7 @@ def delete_s3_objects_batch(client: BaseClient, bucket: str, keys: List[str]) ->
         clean_key = key.strip()
         if clean_key:  # Only add non-empty keys
             delete_objects.append({'Key': clean_key})
+            LOGGER.info(f"Adding key to delete: {clean_key}")
     
     if not delete_objects:
         return 0
@@ -188,6 +189,7 @@ def delete_s3_objects_individually(client: BaseClient, bucket: str, keys: List[s
     
     for key in keys:
         try:
+            LOGGER.info(f"Deleting individual object: s3://{bucket}/{key}")
             client.delete_object(Bucket=bucket, Key=key)
             deleted_count += 1
             LOGGER.debug(f"Deleted individual object: s3://{bucket}/{key}")
