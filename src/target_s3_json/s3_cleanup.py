@@ -19,11 +19,13 @@ def _log_backoff_attempt(details: Dict) -> None:
 
 
 def _retry_pattern() -> Callable:
-    def giveup_on_nosuchkey(e):
-        """Don't retry on NoSuchKey errors - file is gone, no point retrying"""
+    def giveup_on_unretryable_errors(e):
+        """Don't retry on errors that won't be fixed by retrying"""
         if isinstance(e, ClientError):
             error_code = e.response.get('Error', {}).get('Code', '')
-            return error_code == 'NoSuchKey'
+            # NoSuchKey: file is gone, no point retrying
+            # MalformedXML: object key has fundamental issues, retrying won't help
+            return error_code in ['NoSuchKey', 'MalformedXML']
         return False
     
     return backoff.on_exception(
@@ -31,7 +33,7 @@ def _retry_pattern() -> Callable:
         ClientError,
         max_tries=5,
         on_backoff=_log_backoff_attempt,
-        giveup=giveup_on_nosuchkey,
+        giveup=giveup_on_unretryable_errors,
         factor=10)
 
 
@@ -114,7 +116,7 @@ def get_s3_object(client: BaseClient, bucket: str, key: str) -> bytes:
 @_retry_pattern()
 def delete_s3_objects_batch(client: BaseClient, bucket: str, keys: List[str]) -> int:
     """
-    Delete multiple S3 objects in batch (up to 1000 at a time)
+    Delete multiple S3 objects in batch (called with 100 objects at a time to isolate potentialerrors)
     
     Args:
         client: S3 client
@@ -127,22 +129,70 @@ def delete_s3_objects_batch(client: BaseClient, bucket: str, keys: List[str]) ->
     if not keys:
         return 0
     
-    delete_objects = [{'Key': key} for key in keys]
+    try:
+        response = client.delete_objects(
+            Bucket=bucket,
+            Delete={
+                'Objects': [{'Key': key} for key in keys],
+                'Quiet': False  # We want to see both successes and failures
+            }
+        )
+        
+        deleted_count = len(response.get('Deleted', []))
+        
+        # Log any errors
+        if 'Errors' in response:
+            for error in response['Errors']:
+                LOGGER.error(f"Failed to delete s3://{bucket}/{error['Key']}: {error['Message']}")
+        
+        if deleted_count > 0:
+            LOGGER.info(f"Batch deleted {deleted_count} objects from s3://{bucket}/")
+        
+        return deleted_count
+        
+    except ClientError as e:
+        # If batch delete fails, fall back to individual deletes to isolate the problematic key
+        error_code = e.response.get('Error', {}).get('Code', '')
+        if error_code == 'MalformedXML':
+            LOGGER.warning(f"Batch delete failed with MalformedXML, falling back to individual deletes for {len(keys)} objects")
+            return delete_s3_objects_individually(client, bucket, keys)
+        else:
+            raise
+
+
+@_retry_pattern()
+def delete_s3_objects_individually(client: BaseClient, bucket: str, keys: List[str]) -> int:
+    """
+    Delete S3 objects one by one as fallback when batch delete fails
     
-    response = client.delete_objects(
-        Bucket=bucket,
-        Delete={'Objects': delete_objects}
-    )
+    Args:
+        client: S3 client
+        bucket: S3 bucket name
+        keys: List of S3 object keys to delete
+        
+    Returns:
+        Number of objects successfully deleted
+    """
+    deleted_count = 0
     
-    deleted_count = len(response.get('Deleted', []))
-    
-    # Log any errors
-    if 'Errors' in response:
-        for error in response['Errors']:
-            LOGGER.error(f"Failed to delete s3://{bucket}/{error['Key']}: {error['Message']}")
+    for key in keys:
+        try:
+            LOGGER.info(f"Deleting individual object: s3://{bucket}/{key}")
+            client.delete_object(Bucket=bucket, Key=key)
+            deleted_count += 1
+            LOGGER.debug(f"Deleted individual object: s3://{bucket}/{key}")
+        except ClientError as e:
+            error_code = e.response.get('Error', {}).get('Code', '')
+            if error_code == 'NoSuchKey':
+                LOGGER.debug(f"Object s3://{bucket}/{key} already deleted")
+                deleted_count += 1  # Count as successful since goal is achieved
+            else:
+                LOGGER.error(f"Failed to delete s3://{bucket}/{key}: {str(e)}")
+        except Exception as e:
+            LOGGER.error(f"Unexpected error deleting s3://{bucket}/{key}: {str(e)}")
     
     if deleted_count > 0:
-        LOGGER.info(f"Batch deleted {deleted_count} objects from s3://{bucket}/")
+        LOGGER.info(f"Individually deleted {deleted_count} objects from s3://{bucket}/")
     
     return deleted_count
 
@@ -206,8 +256,8 @@ def cleanup_empty_jsonl_files(bucket: str, client: BaseClient, path_components: 
                     
                     files_to_delete.append(key)
                     
-                    # Batch delete when we hit 1000 files (S3 limit)
-                    if len(files_to_delete) >= 1000:
+                    # Batch delete when we hit 100 files (conservative limits to isolate malformed XML errors)
+                    if len(files_to_delete) >= 100:
                         deleted_count = delete_s3_objects_batch(client, bucket, files_to_delete)
                         files_deleted += deleted_count
                         files_to_delete = []  # Reset for next batch
