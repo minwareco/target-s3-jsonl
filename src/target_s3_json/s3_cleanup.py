@@ -128,13 +128,12 @@ def delete_s3_objects_batch(client: BaseClient, bucket: str, keys: List[str]) ->
     """
     if not keys:
         return 0
-
     
     try:
         response = client.delete_objects(
             Bucket=bucket,
             Delete={
-                'Objects': keys,
+                'Objects': [{'Key': key} for key in keys],
                 'Quiet': False  # We want to see both successes and failures
             }
         )
