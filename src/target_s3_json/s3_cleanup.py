@@ -116,7 +116,7 @@ def get_s3_object(client: BaseClient, bucket: str, key: str) -> bytes:
 @_retry_pattern()
 def delete_s3_objects_batch(client: BaseClient, bucket: str, keys: List[str]) -> int:
     """
-    Delete multiple S3 objects in batch (typically called with 100 objects at a time to avoid XML size limits)
+    Delete multiple S3 objects in batch (called with 100 objects at a time to isolate potentialerrors)
     
     Args:
         client: S3 client
