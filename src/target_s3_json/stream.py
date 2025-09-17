@@ -269,7 +269,8 @@ class Loader():
         for stream in self.stream_data:
             # Write last state line at the end of every file so that we know it is complete
             if lastStateLine:
-                await self.writeline(stream, self.stream_data, self.config, lastStateLine)
+                empty_state = { **lastStateLine, 'value': {} }
+                await self.writeline(stream, self.stream_data, self.config, empty_state)
             await self.writeline(stream, self.stream_data, self.config)
 
         return self.state, self.stream_data
