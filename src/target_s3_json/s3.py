@@ -303,7 +303,11 @@ def main(lines: TextIO = sys.stdin) -> None:
             Loader(config | {'client': client, 'executor': executor, 'add_metadata_columns': True }, writeline=save_s3).run(curLines)
         if not curLines.stoppedState():
             break
-    
+
+    # If snowflake_stage is set to False, skip stage creation/refresh
+    if config.get('snowflake_stage', True) == False:
+        return
+
     # After processing is complete, create and refresh the Snowflake stage
     stage = None
     try:
