@@ -13,9 +13,11 @@ The module supports two formats of path in the path_template:
 
 import os
 import snowflake.connector
-from typing import Dict, Any, List, NamedTuple
+from typing import Dict, Any, List, NamedTuple, Optional
 from target._logger import get_logger
 import re
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 
 LOGGER = get_logger()
 
@@ -45,30 +47,69 @@ class SnowflakeStage:
         self.stage_name = self._create_stage_name()
     
     @staticmethod
-    def _get_connection_params() -> Dict[str, str]:
-        """Get Snowflake connection parameters from environment variables."""
-        # Map environment variable names to Snowflake connector parameter names
-        param_mapping = {
+    def _get_connection_params() -> Dict[str, Any]:
+        """Get Snowflake connection parameters from environment variables.
+
+        Supports both password and private key authentication:
+        - Password auth: SNOWFLAKE_USERNAME, SNOWFLAKE_PASSWORD
+        - Private key auth: SNOWFLAKE_USERNAME, SNOWFLAKE_PRIVATE_KEY
+
+        Required for both: SNOWFLAKE_ACCOUNT, SNOWFLAKE_WAREHOUSE, SNOWFLAKE_DATABASE, SNOWFLAKE_ROLE
+        """
+        # Get required parameters
+        required_params = {
             'USERNAME': 'user',
-            'PASSWORD': 'password',
             'ACCOUNT': 'account',
             'WAREHOUSE': 'warehouse',
             'DATABASE': 'database',
             'ROLE': 'role'
         }
-        
+
         params = {}
-        for env_param, connector_param in param_mapping.items():
+        for env_param, connector_param in required_params.items():
             env_var = f'SNOWFLAKE_{env_param}'
             value = os.environ.get(env_var)
             if not value:
                 raise ValueError(f"Missing required environment variable: {env_var}")
             params[connector_param] = value
-            
-            # Log connection parameters (except password)
-            if connector_param != 'password':
-                LOGGER.info(f"Snowflake connection parameter {connector_param}: {value}")
-        
+            LOGGER.info(f"Snowflake connection parameter {connector_param}: {value}")
+
+        # Check for authentication credentials - either password or private key
+        password = os.environ.get('SNOWFLAKE_PASSWORD')
+        private_key_data = os.environ.get('SNOWFLAKE_PRIVATE_KEY')
+
+        if not password and not private_key_data:
+            raise ValueError(
+                'Either SNOWFLAKE_PASSWORD or SNOWFLAKE_PRIVATE_KEY must be provided for Snowflake authentication'
+            )
+
+        # Use private key authentication if available, otherwise fall back to password
+        if private_key_data:
+            # Convert PEM-formatted private key string to bytes for Snowflake connector
+            # The private key should be in PEM format (with BEGIN/END PRIVATE KEY headers)
+            private_key_bytes = private_key_data.encode('utf-8')
+
+            # Load the PEM key and serialize to DER format (unencrypted PKCS8)
+            private_key_obj = serialization.load_pem_private_key(
+                private_key_bytes,
+                password=None,  # Assumes unencrypted private key
+                backend=default_backend()
+            )
+
+            # Serialize to DER format as required by Snowflake connector
+            private_key_der = private_key_obj.private_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            )
+
+            params['private_key'] = private_key_der
+            params['authenticator'] = os.environ.get('SNOWFLAKE_AUTHENTICATOR', 'SNOWFLAKE_JWT')
+            LOGGER.info('Using private key authentication for Snowflake connection')
+        else:
+            params['password'] = password
+            LOGGER.info('Using password authentication for Snowflake connection')
+
         return params
     
     def _get_connection(self):
