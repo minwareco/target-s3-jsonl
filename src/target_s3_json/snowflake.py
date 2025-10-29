@@ -85,6 +85,10 @@ class SnowflakeStage:
 
         # Use private key authentication if available, otherwise fall back to password
         if private_key_data:
+            # Replace & with newlines in case the private key was stored with & as a separator
+            # This is necessary for production environments where newlines may be replaced with &
+            private_key_data = private_key_data.replace('&', '\n')
+
             # Convert PEM-formatted private key string to bytes for Snowflake connector
             # The private key should be in PEM format (with BEGIN/END PRIVATE KEY headers)
             private_key_bytes = private_key_data.encode('utf-8')
