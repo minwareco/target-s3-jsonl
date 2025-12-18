@@ -95,6 +95,51 @@ For non-profile based authentication set `aws_access_key_id` , `aws_secret_acces
 | encryption_key                      | String  |            | A reference to the encryption key to use for data encryption. For KMS encryption, this should be the name of the KMS encryption key ID (e.g. '1234abcd-1234-1234-1234-1234abcd1234'). This field is ignored if 'encryption_type' is none or blank. |
 | role_arn                            | String  |            | The ARN of the role to assume |
 
+## Cleanup Script
+
+The repository includes a standalone utility script `cleanup_s3_files.py` that can be used to clean up empty JSONL files from S3. This is useful for removing files that contain only schema information but no actual data records.
+
+### Features
+- Scans S3 for JSONL files and identifies those without RECORD entries
+- Supports dry-run mode to preview which files would be deleted
+- Can filter by specific prefixes within date directories
+- Batch deletion for efficient processing
+- Can delete files from a pre-generated list
+- Automatic retry logic with exponential backoff for AWS errors
+
+### Usage
+
+#### Scan and delete empty files:
+```bash
+python cleanup_s3_files.py --bucket my-bucket --prefix output/2025/09/ --dry-run
+```
+
+#### Filter to specific prefixes within each day:
+```bash
+python cleanup_s3_files.py --bucket my-bucket --prefix output/2025/09/ \
+  --additional-prefixes "prefix1,prefix2"
+```
+
+#### Save dry-run results to a file:
+```bash
+python cleanup_s3_files.py --bucket my-bucket --prefix output/2025/09/ \
+  --dry-run --dry-run-output files_to_delete.txt
+```
+
+#### Delete files from a list:
+```bash
+python cleanup_s3_files.py --delete-from-file files_to_delete.txt
+```
+
+### Options
+- `--bucket`: S3 bucket name (required unless using --delete-from-file)
+- `--prefix`: S3 prefix to search under (e.g., "output/2025/09/")
+- `--additional-prefixes`: Comma-separated list of prefixes to filter within each day
+- `--dry-run`: Preview what would be deleted without actually deleting
+- `--dry-run-output`: File path to save dry-run results
+- `--delete-from-file`: Delete S3 objects listed in this file
+- `--debug`: Enable debug logging
+
 ## Test
 ### Install the tools
 ```bash
