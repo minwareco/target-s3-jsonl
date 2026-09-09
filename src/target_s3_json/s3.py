@@ -1,5 +1,6 @@
 from io import BufferedIOBase
 import sys
+import os
 from os import environ
 from functools import partial
 from pathlib import Path
@@ -7,6 +8,8 @@ import argparse
 import json
 import gzip
 import lzma
+import logging
+import faulthandler
 import time
 from typing import Callable, Dict, Any, List, TextIO
 from asyncio import sleep, to_thread
@@ -268,8 +271,29 @@ class WrappedTextIO():
         return self.buffer.stoppedState
 
 
+def _exit_after_success(code: int = 0) -> None:
+    '''Terminate the process immediately after a successful run, bypassing normal
+    CPython interpreter finalization.
+
+    snowflake-connector-python has intermittently segfaulted (exit code 139) during
+    interpreter teardown after a fully successful run (state persisted, stage
+    refreshed) - see MW-12846. By this point uploads have already completed
+    synchronously and the Snowflake connection is already closed, so there are no
+    load-bearing atexit/finalization handlers left to run; os._exit() skips them
+    entirely and avoids the crash.
+    '''
+    sys.stdout.flush()
+    sys.stderr.flush()
+    logging.shutdown()
+    os._exit(code)
+
+
 def main(lines: TextIO = sys.stdin) -> None:
     '''Main'''
+    # NOTE: use the real underlying stderr (`sys.__stderr__`), not `sys.stderr`, since
+    # faulthandler needs a stream backed by a real file descriptor and `sys.stderr` may
+    # be wrapped/replaced (e.g. by test runners) without one.
+    faulthandler.enable(file=sys.__stderr__ or sys.stderr)
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', help='Config file', required=True)
     args = parser.parse_args()
@@ -306,31 +330,33 @@ def main(lines: TextIO = sys.stdin) -> None:
 
     # If snowflake_stage is set to False, skip stage creation/refresh
     if config.get('snowflake_stage', True) == False:
-        return
+        _exit_after_success()
 
     # After processing is complete, create and refresh the Snowflake stage
     stage = None
     try:
         # Parse the path template to get components
         components = parse_path_template(config['path_template'])
-        
+
         # Create Snowflake stage and refresh
         stage = SnowflakeStage(components)
         stage.create_s3_stage(s3_bucket=config['s3_bucket'])
-        
+
         # Enabling directory on the stage is necessary as there are existing
         # stages which may not have the directory enabled
         # TODO: Remove this once stages are exclusively created by this target
         # https://minware.atlassian.net/browse/MW-5838
         stage.enable_directory_on_stage()
         stage.refresh_directory()
-            
+
     except Exception as e:
         LOGGER.error(f"Failed to create or refresh Snowflake stage: {str(e)}")
         sys.exit(2)  # Use consistent exit code for Snowflake errors
     finally:
         if stage:
             stage.close()
+
+    _exit_after_success()
 
 
 # from pyarrow import parquet

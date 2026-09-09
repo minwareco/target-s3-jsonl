@@ -17,6 +17,8 @@ from io import BytesIO
 import json
 import gzip
 
+from unittest.mock import MagicMock
+
 # from pytest import patch
 # Third party imports
 from pytest import fixture, raises, mark
@@ -24,8 +26,10 @@ from moto import mock_s3, mock_sts
 
 # Package imports
 # from target.file import save_json
+import target_s3_json.s3 as s3
 from target_s3_json.s3 import (
-    _log_backoff_attempt, config_compression, create_session, get_encryption_args, put_object, upload_file, config_s3, main
+    _exit_after_success, _log_backoff_attempt, config_compression, create_session, get_encryption_args, put_object,
+    upload_file, config_s3, main
 )
 
 # from .conftest import clear_dir
@@ -486,3 +490,95 @@ def test_main(capsys, patch_datetime, patch_sys_stdin, patch_argument_parser, co
     assert head['ResponseMetadata']['HTTPStatusCode'] == 200
     assert head['ContentLength'] == 192
     assert head['ResponseMetadata']['RetryAttempts'] == 0
+
+
+def test_exit_after_success_flushes_and_exits(monkeypatch):
+    '''TEST : `_exit_after_success` flushes stdout/stderr, shuts down logging, then
+    calls `os._exit` - in that order - instead of letting the interpreter unwind
+    normally, per MW-12846.'''
+
+    calls = []
+
+    fake_stdout = MagicMock()
+    fake_stdout.flush.side_effect = lambda: calls.append('stdout_flush')
+    fake_stderr = MagicMock()
+    fake_stderr.flush.side_effect = lambda: calls.append('stderr_flush')
+
+    monkeypatch.setattr(s3.sys, 'stdout', fake_stdout)
+    monkeypatch.setattr(s3.sys, 'stderr', fake_stderr)
+    monkeypatch.setattr(s3.logging, 'shutdown', lambda: calls.append('logging_shutdown'))
+    monkeypatch.setattr(s3.os, '_exit', lambda code: calls.append(('os_exit', code)))
+
+    _exit_after_success(3)
+
+    assert calls == ['stdout_flush', 'stderr_flush', 'logging_shutdown', ('os_exit', 3)]
+
+
+def test_exit_after_success_default_code(monkeypatch):
+    '''TEST : `_exit_after_success` defaults to exit code 0'''
+
+    exit_mock = MagicMock()
+    monkeypatch.setattr(s3.os, '_exit', exit_mock)
+
+    _exit_after_success()
+
+    exit_mock.assert_called_once_with(0)
+
+
+@mock_s3
+def test_main_exits_fast_after_successful_snowflake_stage_refresh(
+        monkeypatch, capsys, patch_datetime, patch_sys_stdin, patch_argument_parser, temp_path, config_raw, file_metadata):
+    '''TEST : once the Snowflake stage is successfully created/refreshed, `main` skips
+    normal interpreter teardown (MW-12846) via `_exit_after_success` instead of
+    returning.'''
+
+    conn = boto3.resource('s3', region_name='us-east-1', endpoint_url='https://s3.amazonaws.com')
+    conn.create_bucket(Bucket=config_raw['s3_bucket'])
+
+    # A `path_template` with the org_id/source/repo_id shape `parse_path_template` expects.
+    temp_path.join('config.json').write_text(
+        json.dumps(config_raw | {'path_template': 'my-org/github/{stream}-{date_time}.json'}), encoding='utf-8')
+
+    stage_instance = MagicMock()
+    stage_class = MagicMock(return_value=stage_instance)
+    monkeypatch.setattr(s3, 'SnowflakeStage', stage_class)
+
+    exit_mock = MagicMock(side_effect=SystemExit)
+    monkeypatch.setattr(s3.os, '_exit', exit_mock)
+
+    with raises(SystemExit):
+        main(lines=sys.stdin)
+
+    stage_class.assert_called_once()
+    stage_instance.create_s3_stage.assert_called_once_with(s3_bucket=config_raw['s3_bucket'])
+    stage_instance.enable_directory_on_stage.assert_called_once()
+    stage_instance.refresh_directory.assert_called_once()
+    stage_instance.close.assert_called_once()
+    exit_mock.assert_called_once_with(0)
+
+
+@mock_s3
+def test_main_sys_exits_on_snowflake_stage_error(
+        monkeypatch, capsys, patch_datetime, patch_sys_stdin, patch_argument_parser, temp_path, config_raw, file_metadata):
+    '''TEST : a Snowflake stage failure still raises `SystemExit(2)` via `sys.exit`,
+    the fast-exit path introduced for MW-12846 only applies to successful runs.'''
+
+    conn = boto3.resource('s3', region_name='us-east-1', endpoint_url='https://s3.amazonaws.com')
+    conn.create_bucket(Bucket=config_raw['s3_bucket'])
+
+    temp_path.join('config.json').write_text(
+        json.dumps(config_raw | {'path_template': 'my-org/github/{stream}-{date_time}.json'}), encoding='utf-8')
+
+    stage_instance = MagicMock()
+    stage_instance.create_s3_stage.side_effect = Exception('boom')
+    monkeypatch.setattr(s3, 'SnowflakeStage', MagicMock(return_value=stage_instance))
+
+    exit_mock = MagicMock(side_effect=SystemExit)
+    monkeypatch.setattr(s3.os, '_exit', exit_mock)
+
+    with raises(SystemExit) as exc_info:
+        main(lines=sys.stdin)
+
+    assert exc_info.value.code == 2
+    stage_instance.close.assert_called_once()
+    exit_mock.assert_not_called()
